@@ -1,0 +1,53 @@
+:root{
+  background-color: #93aad4;
+  width: 50%;
+  margin: auto;
+}
+.leftcontnair{
+  display: flex;
+  margin: 0.5em;
+}
+.icon{
+  width: 2em;
+  height: 2em;
+  border-radius: 2em;
+  margin-right: 0.75em;
+}
+.chat {
+  width: fit-content;
+  max-width: 26vw;
+  font-size: 1em;
+  padding: 0.5em 1em;
+  border-radius: 1em;
+  line-height: 1.2;
+  position: relative;
+}
+.left{
+  background-color: white;
+}
+.left::before {
+  position: absolute;
+  content: "";
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  border: 0 solid white;
+  border-bottom-width: 0.5em;
+  left: -0.5em;
+  top: -1em;
+}
+.right{
+  background-color: #93df87;
+  margin-left: auto;
+}
+.right::before {
+  position: absolute;
+  content: "";
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  border: 0 solid #93df87;
+  border-bottom-width: 0.5em;
+  right: -0.5em;
+  top: -1em;
+}

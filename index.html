@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WebSocket Chat Demo</title>
+<style>
+:root{
+  --bg: #f5f7fb;
+  --left-bg: #ffffff;
+  --right-bg: #93df87;
+  --accent: #2e6cff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+body{
+  margin:0;
+  padding:0;
+  background: var(--bg);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+}
+.container{
+  width: 90%;
+  max-width:900px;
+  height: 90%;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(20,30,60,0.12);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.header{
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+  display:flex;
+  gap:1rem;
+  align-items:center;
+}
+.header .title{
+  font-weight:700;
+  font-size:1.05rem;
+}
+.main{
+  flex:1;
+  padding: 1rem;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:0.5rem;
+  background: linear-gradient(180deg, rgba(250,252,255,1), rgba(245,247,251,1));
+}
+.text{
+  width: fit-content;
+  text-align: left;
+  max-width: calc(90vw - 4em);
+  overflow-wrap: anywhere;
+  padding: 0.5em;
+  padding-left: 1em;
+  padding-right: 1em;
+  border-radius: 17px;
+}
+.right .text{
+  background-color: var(--right-bg);
+  margin-left: auto;
+}
+.left .text{
+  background-color: var(--left-bg);
+  margin-right: auto;
+}
+.message{
+  position: relative;
+}
+.message.right{
+  text-align: right;
+}
+.message strong{
+  font-size: 12px;
+}
+.message.right::after {
+    content: "";
+    position: absolute;
+    width: 1em;
+    height: 1em;
+    border-radius: 50%;
+    border-bottom: 0.5em solid var(--right-bg);
+    top: 0.5em;
+    right: -0.2em;
+}
+.message.left::after {
+    content: "";
+    position: absolute;
+    width: 1em;
+    height: 1em;
+    border-radius: 50%;
+    border-bottom: 0.5em solid var(--left-bg);
+    top: 0.5em;
+    left: -0.2em;
+}
+.system {
+  align-self:center;
+  background: transparent;
+  color: #666;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.9rem;
+}
+.inputbar{
+  display:flex;
+  gap:0.5rem;
+  padding: 0.75rem;
+  border-top:1px solid #eee;
+  align-items:center;
+}
+.inputbar input[type="text"]{
+  flex:1;
+  padding:0.6rem 0.8rem;
+  border-radius: 10px;
+  border:1px solid #ddd;
+  font-size:1rem;
+}
+.inputbar button{
+  padding:0.6rem 0.9rem;
+  border-radius:10px;
+  border:none;
+  background:var(--accent);
+  color:white;
+  font-weight:600;
+  cursor:pointer;
+}
+.meta {
+  font-size:0.8rem;
+  color:#666;
+  margin-top:0.25rem;
+}
+.sending {
+  opacity:0.6;
+  font-style: italic;
+  font-size:0.85rem;
+}
+</style>
+</head>
+<body>
+<div class="container" role="application">
+  <div class="header">
+    <div class="title">WebSocket Chat Demo</div>
+    <div style="margin-left:auto">
+      <label>
+        Name: <input id="name" type="text" placeholder="Your name" value="Guest">
+      </label>
+    </div>
+  </div>
+
+  <div id="main" class="main" aria-live="polite"></div>
+
+  <div class="inputbar">
+    <input id="input" type="text" placeholder="Type a message..." />
+    <button id="send">Send</button>
+  </div>
+</div>
+
+<script>
+/*
+Client features:
+- WebSocket connection to /ws
+- Sends {"type":"join","user":...} on connect
+- Sends messages with a temporary client id for optimistic UI; awaits 'ack' to map to server id
+- Reconnect logic with exponential backoff
+- Fetches /history on reconnect to resync messages
+*/
+
+const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+const HISTORY_URL = "/history?limit=200";
+
+let ws;
+let connected = false;
+let reconnectAttempts = 0;
+let pending = {}; // client_id -> DOM element for optimistic messages
+let messages = {}; // server_id -> true (dedupe)
+const main = document.getElementById('main');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const nameInput = document.getElementById('name');
+
+function addMessageEl({id, user, text, time, side, status}) {
+  if (id && messages[id]) return; // already have it
+  if (id) messages[id] = true;
+
+  const el = document.createElement('div');
+  el.className = 'message ' + (side || 'left');
+  el.setAttribute('data-id', id || '');
+  el.innerHTML = '<strong>' + (user || 'Someone') + '</strong><div class="text">' + (text || '') + '</div>';
+  if (time) {
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = new Date(time).toLocaleTimeString();
+    el.appendChild(meta);
+  }
+  if (status === 'sending') {
+    const s = document.createElement('div');
+    s.className = 'sending';
+    s.textContent = 'Sending...';
+    el.appendChild(s);
+  }
+  main.appendChild(el);
+  // scroll to bottom when near bottom
+  if ((main.scrollHeight - main.scrollTop - main.clientHeight) < 200) {
+    main.scrollTop = main.scrollHeight;
+  }
+  return el;
+}
+
+async function fetchHistory() {
+  try {
+    const res = await fetch(HISTORY_URL);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.messages) return;
+    // clear and render
+    // we'll append messages in ascending time order
+    data.messages.forEach(m => {
+      if (!messages[m.id]) {
+        addMessageEl({id: m.id, user: m.user, text: m.text, time: m.time, side: m.user === nameInput.value ? 'right' : 'left'});
+      }
+    });
+  } catch (e) {
+    console.error("history fetch failed", e);
+  }
+}
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.addEventListener('open', () => {
+    connected = true;
+    reconnectAttempts = 0;
+    console.info("ws open");
+    // send join
+    ws.send(JSON.stringify({type: "join", user: nameInput.value || "Guest"}));
+  });
+
+  ws.addEventListener('message', (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type === 'history' && Array.isArray(d.messages)) {
+        // clear UI and load history
+        // we'll not remove optimistic pending entries here
+        d.messages.forEach(m => {
+          if (!messages[m.id]) addMessageEl({id: m.id, user: m.user, text: m.text, time: m.time, side: m.user === nameInput.value ? 'right' : 'left'});
+        });
+      } else if (d.type === 'message' && d.message) {
+        const m = d.message;
+        // ★ 自分のメッセージの broadcast は無視（duplicate 防止）
+        if (m.user === nameInput.value) {
+          return; 
+        }
+
+        // 他人のメッセージだけ表示
+        if (!messages[m.id]) {
+          addMessageEl({
+            id: m.id,
+            user: m.user,
+            text: m.text,
+            time: m.time,
+            side: 'left'
+          });
+        }
+      } else if (d.type === 'ack') {
+        // server acknowledges a message; map client_id -> server_id
+        const client_id = d.client_id;
+        const server_id = d.server_id;
+        if (client_id && pending[client_id]) {
+          const el = pending[client_id];
+          el.setAttribute('data-id', server_id);
+          // remove sending indicator
+          const s = el.querySelector('.sending');
+          if (s) s.remove();
+          messages[server_id] = true;
+          delete pending[client_id];
+        }
+      } else if (d.type === 'system') {
+        addMessageEl({user: 'system', text: d.message, side: 'system'});
+      } else if (d.type === 'typing') {
+        // optional: show typing indicator
+      }
+    } catch (e) {
+      console.error("ws message parse", e);
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    connected = false;
+    console.info("ws closed");
+    scheduleReconnect();
+  });
+
+  ws.addEventListener('error', (e) => {
+    console.error("ws error", e);
+    ws.close();
+  });
+}
+
+function scheduleReconnect() {
+  reconnectAttempts++;
+  const delay = Math.min(30000, 500 * Math.pow(1.5, reconnectAttempts)); // backoff
+  console.info("reconnect in", delay);
+  setTimeout(() => {
+    fetchHistory(); // resync history on reconnect attempt
+    connect();
+  }, delay);
+}
+
+function sendMessage(text) {
+  if (!text) return;
+  const clientId = 'c-' + Math.random().toString(36).slice(2, 9);
+  // optimistic UI
+  const el = addMessageEl({id: '', user: nameInput.value || 'Guest', text, time: new Date().toISOString(), side: 'right', status: 'sending'});
+  pending[clientId] = el;
+  // send over ws
+  const payload = {type: 'message', id: clientId, user: nameInput.value || 'Guest', text};
+  if (connected && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  } else {
+    // if not connected, try to POST to history endpoint? For demo, just queue retry
+    setTimeout(() => {
+      if (connected && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+      } else {
+        // mark as failed (keep it simple)
+        const s = el.querySelector('.sending');
+        if (s) s.textContent = 'Failed to send';
+      }
+    }, 2000);
+  }
+}
+
+sendBtn.addEventListener('click', () => {
+  const v = input.value.trim();
+  if (!v) return;
+  sendMessage(v);
+  input.value = '';
+});
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    sendBtn.click();
+  }
+});
+
+// initial load
+fetchHistory();
+connect();
+</script>
+</body>
+</html>
