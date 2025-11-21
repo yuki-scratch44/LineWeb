@@ -19,10 +19,9 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 # Config
 # ──────────────────────────────
 ROOT = Path(__file__).parent
-DB_PATH = Path("/tmp/chat.db")  # Renderでも書き込み可能
+DB_PATH = ROOT / "chat.db"
 UPLOAD_DIR = ROOT / "static" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 SECRET_KEY = os.environ.get("SECRET_KEY")
 JWT_ALGO = "HS256"
 TOKEN_EXPIRE_MIN = 60 * 24 * 7  # 7 days
@@ -52,8 +51,6 @@ def get_conn():
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-
-    # users テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,8 +59,6 @@ def init_db():
         icon_path TEXT
     );
     """)
-
-    # messages テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,8 +69,6 @@ def init_db():
         edit_time TEXT
     );
     """)
-
-    # tokens テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS tokens (
         token TEXT PRIMARY KEY,
@@ -83,17 +76,14 @@ def init_db():
         expire_at TEXT
     );
     """)
-
-    # read_states テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS read_states (
         message_id INTEGER,
         user_id INTEGER,
         read_time TEXT,
-        PRIMARY KEY(message_id, user_id)
+        PRIMARY KEY (message_id, user_id)
     );
     """)
-
     conn.commit()
     conn.close()
 
@@ -103,27 +93,21 @@ def hash_password(password: str) -> str:
 def create_token(user_id: int) -> str:
     payload = {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGO)
-    try:
-        conn = get_conn()
-        c = conn.cursor()
-        c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
-                  (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
-        conn.commit()
-    finally:
-        conn.close()
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
+              (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
+    conn.commit()
+    conn.close()
     return token
 
 def verify_token(token: str):
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGO])
         return int(data.get("sub"))
-    except ExpiredSignatureError:
-        print("verify_token failed: token expired")
-    except InvalidTokenError:
-        print("verify_token failed: invalid token")
-    except Exception as e:
+    except (ExpiredSignatureError, InvalidTokenError, Exception) as e:
         print("verify_token failed:", e)
-    return None
+        return None
 
 # ──────────────────────────────
 # WebSocket manager
@@ -286,7 +270,9 @@ async def websocket_endpoint(websocket: WebSocket):
             if typ == "message":
                 text = data.get("text")
                 image = data.get("image")
+                client_id = data.get("id")  # ← クライアントからの id
                 msg_time = datetime.utcnow().isoformat() + "Z"
+
                 conn = get_conn()
                 c = conn.cursor()
                 c.execute("INSERT INTO messages(user_id, text, image_path, time) VALUES (?, ?, ?, ?)",
@@ -294,6 +280,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 conn.commit()
                 server_id = c.lastrowid
                 conn.close()
+
                 entry = {
                     "id": server_id,
                     "user_id": user_id,
@@ -303,8 +290,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     "image": image,
                     "time": msg_time
                 }
+
                 await manager.broadcast({"type": "message", "message": entry}, exclude_ws=websocket)
-                await websocket.send_text(json.dumps({"type": "ack", "server_id": server_id}))
+                # ACK に client_id を含める
+                await websocket.send_text(json.dumps({"type": "ack", "server_id": server_id, "client_id": client_id}))
 
             elif typ == "edit":
                 message_id = int(data.get("message_id"))
