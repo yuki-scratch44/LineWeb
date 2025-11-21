@@ -76,9 +76,17 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def create_token(user_id: int) -> str:
-    payload = {"sub": user_id, "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
+    payload = {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGO)
+    # DB 保存部分は整数 user_id のままでOK
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
+              (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
+    conn.commit()
+    conn.close()
     return token
+
 
 def verify_token(token: str):
     try:
