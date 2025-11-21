@@ -27,6 +27,7 @@ import jwt
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from jwt import ExpiredSignatureError, InvalidTokenError
 
 # Config
 ROOT = Path(__file__).parent
@@ -114,8 +115,20 @@ def create_token(user_id: int) -> str:
 def verify_token(token: str):
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGO])
-        return int(data.get("sub"))
-    except Exception:
+        sub = data.get("sub")
+        try:
+            return int(sub)
+        except Exception:
+            print("verify_token: invalid 'sub' in token:", sub)
+            return None
+    except ExpiredSignatureError:
+        print("verify_token: token expired")
+        return None
+    except InvalidTokenError as e:
+        print("verify_token: invalid token:", e)
+        return None
+    except Exception as e:
+        print("verify_token: unexpected error:", e)
         return None
 
 # ----------------------------
