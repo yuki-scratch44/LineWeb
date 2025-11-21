@@ -331,28 +331,6 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
   return row;
 }
 
-// send message
-sendBtn.addEventListener('click', async () => {
-  const text = input.value.trim();
-  if (!text && !imgfile.files[0]) return;
-  let imageUrl = null;
-  if (imgfile.files[0]) {
-    imageUrl = await uploadImageFile(imgfile.files[0]);
-    imgfile.value = '';
-  }
-  const clientId = 'c-' + Math.random().toString(36).slice(2,9);
-  // optimistic render
-  const el = addMessageEl({id:'', user_id: myUserId, username: localStorage.getItem('chat_username'), icon: localStorage.getItem('chat_icon'), text, image: imageUrl}, 'right');
-  pending[clientId] = el;
-  // send ws
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({type:'message', id: clientId, text, image: imageUrl}));
-  } else {
-    alert('not connected');
-  }
-  input.value = '';
-});
-
 // helper: upload image via /upload
 async function uploadImageFile(file) {
   const fd = new FormData();
