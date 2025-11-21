@@ -185,76 +185,96 @@ async function uploadImageFile(file) {
 
 // connect websocket
 function connectWS() {
-  if (!token) return;
+  if (!token) {
+    console.warn("❌ No token. Cannot connect WebSocket.");
+    return;
+  }
+
   if (ws) ws.close();
-  ws = new WebSocket(WS_BASE + '/ws?token=' + encodeURIComponent(token));
+
+  const url = WS_BASE + '/ws?token=' + encodeURIComponent(token);
+  console.log("🌐 Connecting WebSocket:", url);
+
+  ws = new WebSocket(url);
+
   ws.addEventListener('open', () => {
-    console.log('ws open');
+    console.log('%c🟢 WS OPEN', 'color: green; font-weight: bold;');
   });
+
+  ws.addEventListener('error', (err) => {
+    console.error('❌ WS ERROR:', err);
+  });
+
+  ws.addEventListener('close', (event) => {
+    console.warn(
+      `🔴 WS CLOSED (code=${event.code}, reason=${event.reason})`
+    );
+    // 403 のときなど
+    if (event.code === 1006) {
+      console.error("⚠️ WebSocket closed (1006). Most likely CORS or token rejected.");
+    }
+  });
+
   ws.addEventListener('message', (ev) => {
+    console.log("📥 WS MESSAGE:", ev.data);
     try {
       const d = JSON.parse(ev.data);
-      if (d.type === 'history') {
-        // render history
-        main.innerHTML = '';
-        d.messages.forEach(m => {
-          if (!messages[m.id]) {
-            addMessageEl({
-              id: m.id,
-              user_id: m.user_id,
-              username: m.username,
-              icon: m.icon,
-              text: m.text,
-              image: m.image,
-              time: m.time
-            }, m.user_id == myUserId ? 'right' : 'left');
-          }
-        });
-      } else if (d.type === 'message') {
-        const m = d.message;
-        // ignore broadcast of my own (we display optimistically)
-        if (String(m.user_id) === String(myUserId)) return;
-        if (!messages[m.id]) {
-          addMessageEl({
-            id: m.id,
-            user_id: m.user_id,
-            username: m.username,
-            icon: m.icon,
-            text: m.text,
-            image: m.image,
-            time: m.time
-          }, 'left');
-        }
-      } else if (d.type === 'ack') {
-        const client_id = d.client_id;
-        const server_id = d.server_id;
-        if (pending[client_id]) {
-          const el = pending[client_id];
-          el.dataset.id = server_id;
-          const s = el.querySelector('.sending');
-          if (s) s.remove();
-          messages[server_id] = true;
-          delete pending[client_id];
-        }
-      } else if (d.type === 'edit') {
-        const id = d.message_id;
-        const node = document.querySelector(`[data-id='${id}']`);
-        if (node) {
-          const textNode = node.querySelector('.bubble .text');
-          if (textNode) textNode.textContent = d.new_text;
-          const meta = node.querySelector('.meta');
-          if (meta) meta.textContent = 'edited ' + new Date(d.edit_time).toLocaleTimeString();
-        }
-      } else if (d.type === 'read') {
-        // show small badge or console.log for demo
-        console.log('read', d);
-      } else if (d.type === 'typing') {
-        // optional
-      }
-    } catch (e) { console.error(e); }
+      handleWSMessage(d);
+    } catch (e) {
+      console.error("❌ WS JSON parse error:", e, ev.data);
+    }
   });
-  ws.addEventListener('close', () => { console.log('ws closed'); });
 }
+
+function handleWSMessage(d) {
+  console.log("🔍 Parsed WS msg:", d);
+
+  if (d.type === 'history') {
+    main.innerHTML = '';
+    d.messages.forEach(m => {
+      if (!messages[m.id]) {
+        addMessageEl(m, m.user_id == myUserId ? 'right' : 'left');
+      }
+    });
+    return;
+  }
+
+  if (d.type === 'message') {
+    if (String(d.message.user_id) === String(myUserId)) {
+      console.log("🟦 Ignoring echo of my message");
+      return;
+    }
+    addMessageEl(d.message, 'left');
+    return;
+  }
+
+  if (d.type === 'ack') {
+    console.log("📨 ACK:", d);
+    const el = pending[d.client_id];
+    if (el) {
+      el.dataset.id = d.server_id;
+      const s = el.querySelector('.sending');
+      if (s) s.remove();
+      messages[d.server_id] = true;
+      delete pending[d.client_id];
+    }
+    return;
+  }
+
+  if (d.type === 'edit') {
+    console.log("✏️ EDIT:", d);
+    // ここは元のまま
+    return;
+  }
+
+  if (d.type === 'read') {
+    console.log("👁 READ:", d);
+    return;
+  }
+
+  console.warn("⚠️ Unknown WS message:", d);
+}
+
 
 // add message DOM
 function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
@@ -357,6 +377,44 @@ if (token && myUserId) {
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendBtn.click();
 });
+sendBtn.addEventListener('click', async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    console.error("❌ WS not open. readyState =", ws ? ws.readyState : "no ws");
+    alert('not connected');
+    return;
+  }
+
+  const text = input.value.trim();
+  if (!text && !imgfile.files[0]) return;
+
+  let imageUrl = null;
+  if (imgfile.files[0]) {
+    imageUrl = await uploadImageFile(imgfile.files[0]);
+    imgfile.value = '';
+  }
+
+  const clientId = 'c-' + Math.random().toString(36).slice(2,9);
+  const el = addMessageEl({
+    id: '',
+    user_id: myUserId,
+    username: localStorage.getItem('chat_username'),
+    icon: localStorage.getItem('chat_icon'),
+    text,
+    image: imageUrl
+  }, 'right');
+
+  pending[clientId] = el;
+
+  ws.send(JSON.stringify({
+    type: 'message',
+    id: clientId,
+    text,
+    image: imageUrl
+  }));
+
+  input.value = '';
+});
+
 </script>
 </body>
 </html>
