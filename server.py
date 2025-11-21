@@ -19,9 +19,10 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 # Config
 # ──────────────────────────────
 ROOT = Path(__file__).parent
-DB_PATH = ROOT / "chat.db"
+DB_PATH = Path("/tmp/chat.db")  # Renderでも書き込み可能
 UPLOAD_DIR = ROOT / "static" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 SECRET_KEY = os.environ.get("SECRET_KEY")
 JWT_ALGO = "HS256"
 TOKEN_EXPIRE_MIN = 60 * 24 * 7  # 7 days
@@ -51,6 +52,8 @@ def get_conn():
 def init_db():
     conn = get_conn()
     c = conn.cursor()
+
+    # users テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +62,8 @@ def init_db():
         icon_path TEXT
     );
     """)
+
+    # messages テーブル
     c.execute("""
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +74,26 @@ def init_db():
         edit_time TEXT
     );
     """)
+
+    # tokens テーブル
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS tokens (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER,
+        expire_at TEXT
+    );
+    """)
+
+    # read_states テーブル
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS read_states (
+        message_id INTEGER,
+        user_id INTEGER,
+        read_time TEXT,
+        PRIMARY KEY(message_id, user_id)
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -78,23 +103,27 @@ def hash_password(password: str) -> str:
 def create_token(user_id: int) -> str:
     payload = {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGO)
-    # DB 保存部分は整数 user_id のままでOK
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
-              (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
+                  (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
     return token
-
 
 def verify_token(token: str):
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGO])
         return int(data.get("sub"))
-    except (ExpiredSignatureError, InvalidTokenError, Exception) as e:
+    except ExpiredSignatureError:
+        print("verify_token failed: token expired")
+    except InvalidTokenError:
+        print("verify_token failed: invalid token")
+    except Exception as e:
         print("verify_token failed:", e)
-        return None
+    return None
 
 # ──────────────────────────────
 # WebSocket manager
