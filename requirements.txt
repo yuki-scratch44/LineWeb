@@ -1,5 +1,4 @@
 fastapi
-uvicorn
+uvicorn[standard]
+pyjwt
 python-multipart
-PyJWT
-aiofiles
