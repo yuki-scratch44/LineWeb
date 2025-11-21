@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>WebSocket Chat Demo</title>
+<title>Render Chat (FastAPI)</title>
 <style>
 :root{
   --bg: #f5f7fb;
@@ -12,143 +12,45 @@
   --accent: #2e6cff;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 }
-body{
-  margin:0;
-  padding:0;
-  background: var(--bg);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  height:100vh;
-}
-.container{
-  width: 90%;
-  max-width:900px;
-  height: 90%;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(20,30,60,0.12);
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-.header{
-  padding: 1rem;
-  border-bottom: 1px solid #eee;
-  display:flex;
-  gap:1rem;
-  align-items:center;
-}
-.header .title{
-  font-weight:700;
-  font-size:1.05rem;
-}
-.main{
-  flex:1;
-  padding: 1rem;
-  overflow:auto;
-  display:flex;
-  flex-direction:column;
-  gap:0.5rem;
-  background: linear-gradient(180deg, rgba(250,252,255,1), rgba(245,247,251,1));
-}
-.text{
-  width: fit-content;
-  text-align: left;
-  max-width: calc(90vw - 4em);
-  overflow-wrap: anywhere;
-  padding: 0.5em;
-  padding-left: 1em;
-  padding-right: 1em;
-  border-radius: 17px;
-}
-.right .text{
-  background-color: var(--right-bg);
-  margin-left: auto;
-}
-.left .text{
-  background-color: var(--left-bg);
-  margin-right: auto;
-}
-.message{
-  position: relative;
-}
-.message.right{
-  text-align: right;
-}
-.message strong{
-  font-size: 12px;
-}
-.message.right::after {
-    content: "";
-    position: absolute;
-    width: 1em;
-    height: 1em;
-    border-radius: 50%;
-    border-bottom: 0.5em solid var(--right-bg);
-    top: 0.5em;
-    right: -0.2em;
-}
-.message.left::after {
-    content: "";
-    position: absolute;
-    width: 1em;
-    height: 1em;
-    border-radius: 50%;
-    border-bottom: 0.5em solid var(--left-bg);
-    top: 0.5em;
-    left: -0.2em;
-}
-.system {
-  align-self:center;
-  background: transparent;
-  color: #666;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.9rem;
-}
-.inputbar{
-  display:flex;
-  gap:0.5rem;
-  padding: 0.75rem;
-  border-top:1px solid #eee;
-  align-items:center;
-}
-.inputbar input[type="text"]{
-  flex:1;
-  padding:0.6rem 0.8rem;
-  border-radius: 10px;
-  border:1px solid #ddd;
-  font-size:1rem;
-}
-.inputbar button{
-  padding:0.6rem 0.9rem;
-  border-radius:10px;
-  border:none;
-  background:var(--accent);
-  color:white;
-  font-weight:600;
-  cursor:pointer;
-}
-.meta {
-  font-size:0.8rem;
-  color:#666;
-  margin-top:0.25rem;
-}
-.sending {
-  opacity:0.6;
-  font-style: italic;
-  font-size:0.85rem;
-}
+body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;justify-content:center;height:100vh}
+.container{width:90%;max-width:1000px;height:90%;background:white;border-radius:12px;box-shadow:0 8px 30px rgba(20,30,60,0.12);display:flex;flex-direction:column;overflow:hidden}
+.header{padding:1rem;border-bottom:1px solid #eee;display:flex;gap:1rem;align-items:center}
+.header .title{font-weight:700;font-size:1.05rem}
+.main{flex:1;padding:1rem;overflow:auto;display:flex;flex-direction:column;gap:0.5rem;background:linear-gradient(180deg,#fafcff,#f5f7fb)}
+.message{display:flex;gap:0.5rem;align-items:flex-end}
+.message .avatar{width:36px;height:36px;border-radius:50%}
+.bubble{padding:0.6rem 0.9rem;border-radius:12px;max-width:70%;word-wrap:break-word}
+.left .bubble{background:var(--left-bg);margin-right:auto}
+.right{flex-direction:row-reverse}
+.right .bubble{background:var(--right-bg);margin-left:auto}
+.meta{font-size:0.75rem;color:#666;margin-top:0.25rem}
+.inputbar{display:flex;gap:0.5rem;padding:0.75rem;border-top:1px solid #eee;align-items:center}
+.inputbar input[type="text"]{flex:1;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid #ddd;font-size:1rem}
+.small{font-size:0.85rem;color:#666}
+.sending{opacity:0.6;font-style:italic;font-size:0.85rem}
+.message img.imgmsg{max-width:200px;border-radius:8px;display:block;margin-top:6px}
+.controls{display:flex;gap:0.5rem;align-items:center;margin-left:auto}
+.form-row{display:flex;gap:0.5rem;align-items:center}
 </style>
 </head>
 <body>
 <div class="container" role="application">
   <div class="header">
-    <div class="title">WebSocket Chat Demo</div>
-    <div style="margin-left:auto">
-      <label>
-        Name: <input id="name" type="text" placeholder="Your name" value="Guest">
-      </label>
+    <div class="title">Render Chat</div>
+    <div style="margin-left:auto" id="auth-area">
+      <!-- login/register UI toggled by JS -->
+      <div id="logged-out">
+        <input id="username" placeholder="username" />
+        <input id="password" placeholder="password" type="password" />
+        <button id="btn-register">Register</button>
+        <button id="btn-login">Login</button>
+      </div>
+      <div id="logged-in" style="display:none">
+        <span id="me-name" class="small"></span>
+        <input id="icon-url" placeholder="icon URL (or upload)" style="width:220px" />
+        <input id="upload-file" type="file" accept="image/*" />
+        <button id="btn-logout">Logout</button>
+      </div>
     </div>
   </div>
 
@@ -156,201 +58,305 @@ body{
 
   <div class="inputbar">
     <input id="input" type="text" placeholder="Type a message..." />
+    <input id="imgfile" type="file" accept="image/*" />
     <button id="send">Send</button>
   </div>
 </div>
 
 <script>
-/*
-Client features:
-- WebSocket connection to /ws
-- Sends {"type":"join","user":...} on connect
-- Sends messages with a temporary client id for optimistic UI; awaits 'ack' to map to server id
-- Reconnect logic with exponential backoff
-- Fetches /history on reconnect to resync messages
-*/
-
-const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-const HISTORY_URL = "/history?limit=200";
-
-let ws;
-let connected = false;
-let reconnectAttempts = 0;
-let pending = {}; // client_id -> DOM element for optimistic messages
-let messages = {}; // server_id -> true (dedupe)
+const API_BASE = "";
+const WS_BASE = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
 const main = document.getElementById('main');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
-const nameInput = document.getElementById('name');
+const imgfile = document.getElementById('imgfile');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+const btnRegister = document.getElementById('btn-register');
+const btnLogin = document.getElementById('btn-login');
+const loggedInArea = document.getElementById('logged-in');
+const loggedOutArea = document.getElementById('logged-out');
+const meNameSpan = document.getElementById('me-name');
+const iconUrlInput = document.getElementById('icon-url');
+const uploadFileInput = document.getElementById('upload-file');
+const btnLogout = document.getElementById('btn-logout');
 
-function addMessageEl({id, user, text, time, side, status}) {
-  if (id && messages[id]) return; // already have it
-  if (id) messages[id] = true;
+let token = localStorage.getItem('chat_token') || null;
+let myUserId = localStorage.getItem('chat_user_id') || null;
+let ws = null;
+let pending = {}; // clientId -> DOM element
+let messages = {}; // server_id -> true
 
-  const el = document.createElement('div');
-  el.className = 'message ' + (side || 'left');
-  el.setAttribute('data-id', id || '');
-  el.innerHTML = '<strong>' + (user || 'Someone') + '</strong><div class="text">' + (text || '') + '</div>';
-  if (time) {
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = new Date(time).toLocaleTimeString();
-    el.appendChild(meta);
-  }
-  if (status === 'sending') {
-    const s = document.createElement('div');
-    s.className = 'sending';
-    s.textContent = 'Sending...';
-    el.appendChild(s);
-  }
-  main.appendChild(el);
-  // scroll to bottom when near bottom
-  if ((main.scrollHeight - main.scrollTop - main.clientHeight) < 200) {
-    main.scrollTop = main.scrollHeight;
-  }
-  return el;
+function showLoggedIn() {
+  loggedOutArea.style.display = 'none';
+  loggedInArea.style.display = '';
+  meNameSpan.textContent = localStorage.getItem('chat_username') || 'me';
+  iconUrlInput.value = localStorage.getItem('chat_icon') || '';
 }
 
-async function fetchHistory() {
-  try {
-    const res = await fetch(HISTORY_URL);
-    if (!res.ok) return;
-    const data = await res.json();
-    if (!data.messages) return;
-    // clear and render
-    // we'll append messages in ascending time order
-    data.messages.forEach(m => {
-      if (!messages[m.id]) {
-        addMessageEl({id: m.id, user: m.user, text: m.text, time: m.time, side: m.user === nameInput.value ? 'right' : 'left'});
-      }
-    });
-  } catch (e) {
-    console.error("history fetch failed", e);
-  }
+function showLoggedOut() {
+  loggedOutArea.style.display = '';
+  loggedInArea.style.display = 'none';
 }
 
-function connect() {
-  ws = new WebSocket(WS_URL);
+// auth
+btnRegister.addEventListener('click', async () => {
+  const u = usernameInput.value.trim();
+  const p = passwordInput.value;
+  if (!u || !p) return alert("enter username+password");
+  const fd = new FormData();
+  fd.append('username', u);
+  fd.append('password', p);
+  const res = await fetch(API_BASE + '/register', {method:'POST', body: fd});
+  if (!res.ok) {
+    alert('register failed');
+    return;
+  }
+  const j = await res.json();
+  token = j.token;
+  myUserId = j.user_id;
+  localStorage.setItem('chat_token', token);
+  localStorage.setItem('chat_user_id', myUserId);
+  localStorage.setItem('chat_username', u);
+  showLoggedIn();
+  connectWS();
+});
 
+btnLogin.addEventListener('click', async () => {
+  const u = usernameInput.value.trim();
+  const p = passwordInput.value;
+  if (!u || !p) return alert("enter username+password");
+  const fd = new FormData();
+  fd.append('username', u);
+  fd.append('password', p);
+  const res = await fetch(API_BASE + '/login', {method:'POST', body: fd});
+  if (!res.ok) {
+    alert('login failed');
+    return;
+  }
+  const j = await res.json();
+  token = j.token;
+  myUserId = j.user_id;
+  localStorage.setItem('chat_token', token);
+  localStorage.setItem('chat_user_id', myUserId);
+  localStorage.setItem('chat_username', u);
+  showLoggedIn();
+  connectWS();
+});
+
+btnLogout.addEventListener('click', () => {
+  token = null; myUserId = null;
+  localStorage.removeItem('chat_token');
+  localStorage.removeItem('chat_user_id');
+  localStorage.removeItem('chat_username');
+  showLoggedOut();
+  if (ws) ws.close();
+  ws = null;
+  main.innerHTML = '';
+});
+
+// upload icon
+uploadFileInput.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('token', token || '');
+  fd.append('type', 'icon');
+  const res = await fetch(API_BASE + '/upload', {method:'POST', body: fd});
+  const j = await res.json();
+  iconUrlInput.value = j.url;
+  localStorage.setItem('chat_icon', j.url);
+  alert('icon uploaded');
+});
+
+// upload image for message helper
+async function uploadImageFile(file) {
+  if (!file) return null;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('token', token || '');
+  fd.append('type', 'image');
+  const res = await fetch(API_BASE + '/upload', {method:'POST', body: fd});
+  if (!res.ok) return null;
+  const j = await res.json();
+  return j.url;
+}
+
+// connect websocket
+function connectWS() {
+  if (!token) return;
+  if (ws) ws.close();
+  ws = new WebSocket(WS_BASE + '/ws?token=' + encodeURIComponent(token));
   ws.addEventListener('open', () => {
-    connected = true;
-    reconnectAttempts = 0;
-    console.info("ws open");
-    // send join
-    ws.send(JSON.stringify({type: "join", user: nameInput.value || "Guest"}));
+    console.log('ws open');
   });
-
   ws.addEventListener('message', (ev) => {
     try {
       const d = JSON.parse(ev.data);
-      if (d.type === 'history' && Array.isArray(d.messages)) {
-        // clear UI and load history
-        // we'll not remove optimistic pending entries here
+      if (d.type === 'history') {
+        // render history
+        main.innerHTML = '';
         d.messages.forEach(m => {
-          if (!messages[m.id]) addMessageEl({id: m.id, user: m.user, text: m.text, time: m.time, side: m.user === nameInput.value ? 'right' : 'left'});
+          if (!messages[m.id]) {
+            addMessageEl({
+              id: m.id,
+              user_id: m.user_id,
+              username: m.username,
+              icon: m.icon,
+              text: m.text,
+              image: m.image,
+              time: m.time
+            }, m.user_id == myUserId ? 'right' : 'left');
+          }
         });
-      } else if (d.type === 'message' && d.message) {
+      } else if (d.type === 'message') {
         const m = d.message;
-        // ★ 自分のメッセージの broadcast は無視（duplicate 防止）
-        if (m.user === nameInput.value) {
-          return; 
-        }
-
-        // 他人のメッセージだけ表示
+        // ignore broadcast of my own (we display optimistically)
+        if (String(m.user_id) === String(myUserId)) return;
         if (!messages[m.id]) {
           addMessageEl({
             id: m.id,
-            user: m.user,
+            user_id: m.user_id,
+            username: m.username,
+            icon: m.icon,
             text: m.text,
-            time: m.time,
-            side: 'left'
-          });
+            image: m.image,
+            time: m.time
+          }, 'left');
         }
       } else if (d.type === 'ack') {
-        // server acknowledges a message; map client_id -> server_id
         const client_id = d.client_id;
         const server_id = d.server_id;
-        if (client_id && pending[client_id]) {
+        if (pending[client_id]) {
           const el = pending[client_id];
-          el.setAttribute('data-id', server_id);
-          // remove sending indicator
+          el.dataset.id = server_id;
           const s = el.querySelector('.sending');
           if (s) s.remove();
           messages[server_id] = true;
           delete pending[client_id];
         }
-      } else if (d.type === 'system') {
-        addMessageEl({user: 'system', text: d.message, side: 'system'});
+      } else if (d.type === 'edit') {
+        const id = d.message_id;
+        const node = document.querySelector(`[data-id='${id}']`);
+        if (node) {
+          const textNode = node.querySelector('.bubble .text');
+          if (textNode) textNode.textContent = d.new_text;
+          const meta = node.querySelector('.meta');
+          if (meta) meta.textContent = 'edited ' + new Date(d.edit_time).toLocaleTimeString();
+        }
+      } else if (d.type === 'read') {
+        // show small badge or console.log for demo
+        console.log('read', d);
       } else if (d.type === 'typing') {
-        // optional: show typing indicator
+        // optional
       }
-    } catch (e) {
-      console.error("ws message parse", e);
-    }
+    } catch (e) { console.error(e); }
   });
-
-  ws.addEventListener('close', () => {
-    connected = false;
-    console.info("ws closed");
-    scheduleReconnect();
-  });
-
-  ws.addEventListener('error', (e) => {
-    console.error("ws error", e);
-    ws.close();
-  });
+  ws.addEventListener('close', () => { console.log('ws closed'); });
 }
 
-function scheduleReconnect() {
-  reconnectAttempts++;
-  const delay = Math.min(30000, 500 * Math.pow(1.5, reconnectAttempts)); // backoff
-  console.info("reconnect in", delay);
-  setTimeout(() => {
-    fetchHistory(); // resync history on reconnect attempt
-    connect();
-  }, delay);
-}
+// add message DOM
+function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
+  if (id && messages[id]) return null;
+  if (id) messages[id] = true;
 
-function sendMessage(text) {
-  if (!text) return;
-  const clientId = 'c-' + Math.random().toString(36).slice(2, 9);
-  // optimistic UI
-  const el = addMessageEl({id: '', user: nameInput.value || 'Guest', text, time: new Date().toISOString(), side: 'right', status: 'sending'});
-  pending[clientId] = el;
-  // send over ws
-  const payload = {type: 'message', id: clientId, user: nameInput.value || 'Guest', text};
-  if (connected && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-  } else {
-    // if not connected, try to POST to history endpoint? For demo, just queue retry
-    setTimeout(() => {
-      if (connected && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
-      } else {
-        // mark as failed (keep it simple)
-        const s = el.querySelector('.sending');
-        if (s) s.textContent = 'Failed to send';
-      }
-    }, 2000);
+  const row = document.createElement('div');
+  row.className = 'message ' + (side === 'right' ? 'right' : 'left');
+  row.dataset.id = id || '';
+
+  const avatar = document.createElement('img');
+  avatar.className = 'avatar';
+  avatar.src = icon || '/static/default-avatar.png';
+  avatar.onerror = () => { avatar.src = '/static/default-avatar.png'; };
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  const who = document.createElement('div');
+  who.innerHTML = '<strong>' + (username || 'User') + '</strong>';
+  const txt = document.createElement('div');
+  txt.className = 'text';
+  txt.textContent = text || '';
+  bubble.appendChild(who);
+  bubble.appendChild(txt);
+
+  if (image) {
+    const img = document.createElement('img');
+    img.className = 'imgmsg';
+    img.src = image;
+    bubble.appendChild(img);
   }
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = time ? new Date(time).toLocaleTimeString() : '';
+
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+
+  // if this is my own message and not yet acked, show sending
+  if (side === 'right' && !id) {
+    const s = document.createElement('div');
+    s.className = 'sending';
+    s.textContent = 'Sending...';
+    bubble.appendChild(s);
+  }
+
+  row.appendChild(avatar);
+  row.appendChild(bubble);
+  row.appendChild(meta);
+  main.appendChild(row);
+  // scroll to bottom
+  main.scrollTop = main.scrollHeight;
+  return row;
 }
 
-sendBtn.addEventListener('click', () => {
-  const v = input.value.trim();
-  if (!v) return;
-  sendMessage(v);
+// send message
+sendBtn.addEventListener('click', async () => {
+  const text = input.value.trim();
+  if (!text && !imgfile.files[0]) return;
+  let imageUrl = null;
+  if (imgfile.files[0]) {
+    imageUrl = await uploadImageFile(imgfile.files[0]);
+    imgfile.value = '';
+  }
+  const clientId = 'c-' + Math.random().toString(36).slice(2,9);
+  // optimistic render
+  const el = addMessageEl({id:'', user_id: myUserId, username: localStorage.getItem('chat_username'), icon: localStorage.getItem('chat_icon'), text, image: imageUrl}, 'right');
+  pending[clientId] = el;
+  // send ws
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type:'message', id: clientId, text, image: imageUrl}));
+  } else {
+    alert('not connected');
+  }
   input.value = '';
 });
 
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    sendBtn.click();
-  }
-});
+// helper: upload image via /upload
+async function uploadImageFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('token', token || '');
+  fd.append('type', 'image');
+  const res = await fetch(API_BASE + '/upload', {method:'POST', body: fd});
+  if (!res.ok) { alert('upload failed'); return null; }
+  const j = await res.json();
+  return j.url;
+}
 
-// initial load
-fetchHistory();
-connect();
+// initialize
+if (token && myUserId) {
+  showLoggedIn();
+  connectWS();
+} else {
+  showLoggedOut();
+}
+
+// small UX: send enter
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendBtn.click();
+});
 </script>
 </body>
 </html>
