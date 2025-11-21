@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
+from contextlib import asynccontextmanager
 
 import jwt
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
@@ -36,7 +37,15 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 JWT_ALGO = "HS256"
 TOKEN_EXPIRE_MIN = 60 * 24 * 7  # 7 days
 
-app = FastAPI()
+# ─────────────────────────────────
+# Lifespan (on_startup replacement)
+# ─────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # Serve static files (client)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
@@ -94,7 +103,6 @@ def hash_password(password: str) -> str:
 def create_token(user_id: int) -> str:
     payload = {"sub": user_id, "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGO)
-    # store token
     conn = get_conn()
     c = conn.cursor()
     c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
@@ -115,7 +123,7 @@ def verify_token(token: str):
 # ----------------------------
 class ConnectionManager:
     def __init__(self):
-        self.active: Dict[WebSocket, int] = {}  # ws -> user_id
+        self.active: Dict[WebSocket, int] = {}
         self.lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, user_id: int):
@@ -157,7 +165,8 @@ def load_history(limit=200):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-    SELECT messages.id, messages.user_id, users.username, users.icon_path, messages.text, messages.image_path, messages.time, messages.edit_time
+    SELECT messages.id, messages.user_id, users.username, users.icon_path,
+           messages.text, messages.image_path, messages.time, messages.edit_time
     FROM messages
     LEFT JOIN users ON users.id = messages.user_id
     ORDER BY messages.id ASC
@@ -182,10 +191,6 @@ def load_history(limit=200):
 # ----------------------------
 # REST endpoints
 # ----------------------------
-@app.on_event("startup")
-def startup():
-    init_db()
-
 @app.get("/")
 async def index():
     path = ROOT / "static" / "index.html"
@@ -222,7 +227,6 @@ async def login(username: str = Form(...), password: str = Form(...)):
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...), token: str = Form(None), type: str = Form("image")):
-    # verify token (optional). If token provided, use it to locate user for icon upload
     user_id = None
     if token:
         user_id = verify_token(token)
@@ -233,7 +237,6 @@ async def upload(file: UploadFile = File(...), token: str = Form(None), type: st
         content = await file.read()
         f.write(content)
     url_path = f"/static/uploads/{fname}"
-    # if uploading icon and user_id known, update users table
     if type == "icon" and user_id:
         conn = get_conn()
         c = conn.cursor()
@@ -252,7 +255,6 @@ async def history(limit: int = 200):
 # ----------------------------
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # token must be passed as query param ?token=...
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)
@@ -262,7 +264,6 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1008)
         return
     await manager.connect(websocket, user_id)
-    # on connect, send history
     await websocket.send_text(json.dumps({"type": "history", "messages": load_history(200)}))
     try:
         while True:
@@ -274,11 +275,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
             typ = data.get("type")
             if typ == "message":
-                # expected fields: id (client temporary id), text, image(optional)
                 client_id = data.get("id")
                 text = data.get("text")
-                image = data.get("image")  # server path like /static/uploads/...
-                # store
+                image = data.get("image")
                 msg_time = datetime.utcnow().isoformat() + "Z"
                 conn = get_conn()
                 c = conn.cursor()
@@ -296,17 +295,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     "image": image,
                     "time": msg_time
                 }
-                # broadcast to all except sender
                 await manager.broadcast({"type": "message", "message": entry}, exclude_ws=websocket)
-                # send ack to sender mapping client->server id
                 await websocket.send_text(json.dumps({"type": "ack", "client_id": client_id, "server_id": server_id}))
+
             elif typ == "edit":
                 message_id = int(data.get("message_id"))
                 new_text = data.get("new_text")
                 edit_time = datetime.utcnow().isoformat() + "Z"
                 conn = get_conn()
                 c = conn.cursor()
-                # ensure ownership
                 c.execute("SELECT user_id FROM messages WHERE id = ?", (message_id,))
                 r = c.fetchone()
                 if not r or r["user_id"] != user_id:
@@ -318,6 +315,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 conn.close()
                 payload = {"type": "edit", "message_id": message_id, "new_text": new_text, "edit_time": edit_time}
                 await manager.broadcast(payload)
+
             elif typ == "read":
                 message_id = int(data.get("message_id"))
                 read_time = datetime.utcnow().isoformat() + "Z"
@@ -327,15 +325,17 @@ async def websocket_endpoint(websocket: WebSocket):
                           (message_id, user_id, read_time))
                 conn.commit()
                 conn.close()
-                # notify others
                 payload = {"type": "read", "message_id": message_id, "user_id": user_id, "read_time": read_time}
                 await manager.broadcast(payload)
+
             elif typ == "typing":
                 state = bool(data.get("state", False))
                 payload = {"type": "typing", "user_id": user_id, "state": state}
                 await manager.broadcast(payload, exclude_ws=websocket)
+
             else:
                 await websocket.send_text(json.dumps({"type": "error", "message": "unknown_type"}))
+
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
     except Exception:
