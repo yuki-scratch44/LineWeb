@@ -1,17 +1,3 @@
-"""
-Render-ready chat app using FastAPI + WebSocket + SQLite (file DB).
-
-Features:
-- User register/login with JWT
-- Image upload (for profile icons and message images) saved under ./static/uploads
-- Messages persisted in SQLite
-- Read receipts, message edit
-- WebSocket endpoint /ws for real-time events
-- Single-room demo (can be extended)
-Notes:
-- For production, set SECRET_KEY env var, enable HTTPS/WSS, use bcrypt/passlib,
-  use cloud storage for files, add rate-limits and CSRF protections where needed.
-"""
 import os
 import asyncio
 import json
@@ -29,31 +15,34 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from jwt import ExpiredSignatureError, InvalidTokenError
 
+# ──────────────────────────────
 # Config
+# ──────────────────────────────
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "chat.db"
 UPLOAD_DIR = ROOT / "static" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+SECRET_KEY = os.environ.get("SECRET_KEY")
 JWT_ALGO = "HS256"
 TOKEN_EXPIRE_MIN = 60 * 24 * 7  # 7 days
 
-# ─────────────────────────────────
-# Lifespan (on_startup replacement)
-# ─────────────────────────────────
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY not set! Add SECRET_KEY in Render Environment Variables")
+
+# ──────────────────────────────
+# Lifespan (startup)
+# ──────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     yield
 
 app = FastAPI(lifespan=lifespan)
-
-# Serve static files (client)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
-# ----------------------------
-# Database helpers (sqlite3)
-# ----------------------------
+# ──────────────────────────────
+# Database helpers
+# ──────────────────────────────
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -80,21 +69,6 @@ def init_db():
         edit_time TEXT
     );
     """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS read_states (
-        message_id INTEGER,
-        user_id INTEGER,
-        read_time TEXT,
-        PRIMARY KEY (message_id, user_id)
-    );
-    """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS tokens (
-        token TEXT PRIMARY KEY,
-        user_id INTEGER,
-        expire_at TEXT
-    );
-    """)
     conn.commit()
     conn.close()
 
@@ -104,36 +78,19 @@ def hash_password(password: str) -> str:
 def create_token(user_id: int) -> str:
     payload = {"sub": user_id, "exp": datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)}
     token = jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGO)
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO tokens(token, user_id, expire_at) VALUES (?, ?, ?)",
-              (token, user_id, (datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MIN)).isoformat()))
-    conn.commit()
-    conn.close()
     return token
 
 def verify_token(token: str):
     try:
         data = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGO])
-        sub = data.get("sub")
-        try:
-            return int(sub)
-        except Exception:
-            print("verify_token: invalid 'sub' in token:", sub)
-            return None
-    except ExpiredSignatureError:
-        print("verify_token: token expired")
-        return None
-    except InvalidTokenError as e:
-        print("verify_token: invalid token:", e)
-        return None
-    except Exception as e:
-        print("verify_token: unexpected error:", e)
+        return int(data.get("sub"))
+    except (ExpiredSignatureError, InvalidTokenError, Exception) as e:
+        print("verify_token failed:", e)
         return None
 
-# ----------------------------
-# Simple WebSocket manager
-# ----------------------------
+# ──────────────────────────────
+# WebSocket manager
+# ──────────────────────────────
 class ConnectionManager:
     def __init__(self):
         self.active: Dict[WebSocket, int] = {}
@@ -146,12 +103,10 @@ class ConnectionManager:
 
     async def disconnect(self, websocket: WebSocket):
         async with self.lock:
-            if websocket in self.active:
-                del self.active[websocket]
+            self.active.pop(websocket, None)
 
     async def broadcast(self, payload: dict, exclude_ws: WebSocket = None):
         txt = json.dumps(payload)
-        to_remove = []
         async with self.lock:
             websockets = list(self.active.keys())
         for ws in websockets:
@@ -160,20 +115,13 @@ class ConnectionManager:
             try:
                 await ws.send_text(txt)
             except Exception:
-                to_remove.append(ws)
-        if to_remove:
-            async with self.lock:
-                for ws in to_remove:
-                    self.active.pop(ws, None)
-
-    def get_user_id(self, websocket: WebSocket):
-        return self.active.get(websocket)
+                await self.disconnect(ws)
 
 manager = ConnectionManager()
 
-# ----------------------------
-# Utility: load history
-# ----------------------------
+# ──────────────────────────────
+# Utilities
+# ──────────────────────────────
 def load_history(limit=200):
     conn = get_conn()
     c = conn.cursor()
@@ -201,20 +149,36 @@ def load_history(limit=200):
         })
     return msgs
 
-# ----------------------------
+def get_username(user_id: int):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+    r = c.fetchone()
+    conn.close()
+    return r["username"] if r else "unknown"
+
+def get_user_icon(user_id: int):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("SELECT icon_path FROM users WHERE id = ?", (user_id,))
+    r = c.fetchone()
+    conn.close()
+    return r["icon_path"] if r else None
+
+# ──────────────────────────────
 # REST endpoints
-# ----------------------------
+# ──────────────────────────────
 @app.get("/")
 async def index():
-    path = ROOT / "static" / "index.html"
-    return FileResponse(path)
+    return FileResponse(ROOT / "static" / "index.html")
 
 @app.post("/register")
 async def register(username: str = Form(...), password: str = Form(...)):
     conn = get_conn()
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", (username, hash_password(password)))
+        c.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)",
+                  (username, hash_password(password)))
         conn.commit()
         user_id = c.lastrowid
         token = create_token(user_id)
@@ -231,24 +195,19 @@ async def login(username: str = Form(...), password: str = Form(...)):
     c.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
     r = c.fetchone()
     conn.close()
-    if not r:
-        raise HTTPException(status_code=400, detail="invalid_credentials")
-    if hash_password(password) != r["password_hash"]:
+    if not r or hash_password(password) != r["password_hash"]:
         raise HTTPException(status_code=400, detail="invalid_credentials")
     token = create_token(r["id"])
     return {"user_id": r["id"], "token": token}
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...), token: str = Form(None), type: str = Form("image")):
-    user_id = None
-    if token:
-        user_id = verify_token(token)
+    user_id = verify_token(token) if token else None
     ext = Path(file.filename).suffix or ".bin"
     fname = f"{uuid.uuid4().hex}{ext}"
     dest = UPLOAD_DIR / fname
     with open(dest, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        f.write(await file.read())
     url_path = f"/static/uploads/{fname}"
     if type == "icon" and user_id:
         conn = get_conn()
@@ -260,24 +219,23 @@ async def upload(file: UploadFile = File(...), token: str = Form(None), type: st
 
 @app.get("/history")
 async def history(limit: int = 200):
-    msgs = load_history(limit)
-    return {"messages": msgs}
+    return {"messages": load_history(limit)}
 
-# ----------------------------
+# ──────────────────────────────
 # WebSocket endpoint
-# ----------------------------
-@app.websocket("/")
+# ──────────────────────────────
+@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=1008)
-        return
     user_id = verify_token(token)
     if not user_id:
         await websocket.close(code=1008)
         return
+
     await manager.connect(websocket, user_id)
+    # send initial history
     await websocket.send_text(json.dumps({"type": "history", "messages": load_history(200)}))
+
     try:
         while True:
             data_txt = await websocket.receive_text()
@@ -286,9 +244,9 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 await websocket.send_text(json.dumps({"type": "error", "message": "invalid_json"}))
                 continue
+
             typ = data.get("type")
             if typ == "message":
-                client_id = data.get("id")
                 text = data.get("text")
                 image = data.get("image")
                 msg_time = datetime.utcnow().isoformat() + "Z"
@@ -309,7 +267,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "time": msg_time
                 }
                 await manager.broadcast({"type": "message", "message": entry}, exclude_ws=websocket)
-                await websocket.send_text(json.dumps({"type": "ack", "client_id": client_id, "server_id": server_id}))
+                await websocket.send_text(json.dumps({"type": "ack", "server_id": server_id}))
 
             elif typ == "edit":
                 message_id = int(data.get("message_id"))
@@ -323,7 +281,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps({"type": "error", "message": "not_allowed"}))
                     conn.close()
                     continue
-                c.execute("UPDATE messages SET text = ?, edit_time = ? WHERE id = ?", (new_text, edit_time, message_id))
+                c.execute("UPDATE messages SET text=?, edit_time=? WHERE id=?",
+                          (new_text, edit_time, message_id))
                 conn.commit()
                 conn.close()
                 payload = {"type": "edit", "message_id": message_id, "new_text": new_text, "edit_time": edit_time}
@@ -353,20 +312,3 @@ async def websocket_endpoint(websocket: WebSocket):
         await manager.disconnect(websocket)
     except Exception:
         await manager.disconnect(websocket)
-
-# Helpers
-def get_username(user_id: int):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT username FROM users WHERE id = ?", (user_id,))
-    r = c.fetchone()
-    conn.close()
-    return r["username"] if r else "unknown"
-
-def get_user_icon(user_id: int):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT icon_path FROM users WHERE id = ?", (user_id,))
-    r = c.fetchone()
-    conn.close()
-    return r["icon_path"] if r else None
