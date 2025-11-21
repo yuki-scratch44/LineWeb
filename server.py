@@ -266,7 +266,7 @@ async def history(limit: int = 200):
 # ----------------------------
 # WebSocket endpoint
 # ----------------------------
-@app.websocket("/ws")
+@app.websocket("/")
 async def websocket_endpoint(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if not token:
