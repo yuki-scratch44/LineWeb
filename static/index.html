@@ -192,7 +192,7 @@ function connectWS() {
 
   if (ws) ws.close();
 
-  const url = WS_BASE + '/?token=' + encodeURIComponent(token);
+  const url = WS_BASE + '/ws?token=' + encodeURIComponent(token);
   console.log("🌐 Connecting WebSocket:", url);
 
   ws = new WebSocket(url);
