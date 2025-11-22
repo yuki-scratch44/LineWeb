@@ -286,17 +286,19 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
   const row = document.createElement('div');
   row.className = 'message ' + (side === 'right' ? 'right' : 'left');
   row.dataset.id = id || '';
-
+  
+  const who = document.createElement('div');
+  
   if (side === 'left') {
     const avatar = document.createElement('img');
     avatar.className = 'avatar';
     avatar.src = icon || '/static/default-avatar.png';
     avatar.onerror = () => { avatar.src = '/static/default-avatar.png'; };
-    const who = document.createElement('div');
     who.innerHTML = '<strong>' + (username || 'User') + '</strong>';
     row.appendChild(avatar);
-    row.appendChild(who);
   }
+
+  row.appendChild(who);
 
   const msgcontent = document.createElement('div');
   msgcontent.className = 'msgcontent';
