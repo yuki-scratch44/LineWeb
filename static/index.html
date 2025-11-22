@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP&display=swap" rel="stylesheet">
 <title>Render Chat (FastAPI)</title>
 <style>
 :root{
@@ -10,7 +13,11 @@
   --left-bg: #ffffff;
   --right-bg: #93df87;
   --accent: #2e6cff;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-family: "Noto Sans JP", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+
 }
 body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;justify-content:center;height:100vh}
 .container{width:90%;max-width:1000px;height:90%;background:white;border-radius:12px;box-shadow:0 8px 30px rgba(20,30,60,0.12);display:flex;flex-direction:column;overflow:hidden}
