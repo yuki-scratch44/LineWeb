@@ -292,6 +292,8 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
     avatar.onerror = () => { avatar.src = '/static/default-avatar.png'; };
     const who = document.createElement('div');
     who.innerHTML = '<strong>' + (username || 'User') + '</strong>';
+    row.appendChild(avatar);
+    row.appendChild(who);
   }
 
   const bubble = document.createElement('div');
@@ -323,9 +325,7 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
     bubble.appendChild(s);
   }
 
-  row.appendChild(avatar);
   row.appendChild(bubble);
-  row.appendChild(who);
   row.appendChild(meta);
   main.appendChild(row);
   // scroll to bottom
