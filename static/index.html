@@ -285,15 +285,17 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
   row.className = 'message ' + (side === 'right' ? 'right' : 'left');
   row.dataset.id = id || '';
 
-  const avatar = document.createElement('img');
-  avatar.className = 'avatar';
-  avatar.src = icon || '/static/default-avatar.png';
-  avatar.onerror = () => { avatar.src = '/static/default-avatar.png'; };
+  if (side === 'left') {
+    const avatar = document.createElement('img');
+    avatar.className = 'avatar';
+    avatar.src = icon || '/static/default-avatar.png';
+    avatar.onerror = () => { avatar.src = '/static/default-avatar.png'; };
+    const who = document.createElement('div');
+    who.innerHTML = '<strong>' + (username || 'User') + '</strong>';
+  }
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  const who = document.createElement('div');
-  who.innerHTML = '<strong>' + (username || 'User') + '</strong>';
   const txt = document.createElement('div');
   txt.className = 'text';
   txt.textContent = text || '';
