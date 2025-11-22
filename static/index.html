@@ -29,11 +29,12 @@ body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;jus
 .message{display:flex;gap:0.5rem}
 .message .avatar{width:36px;height:36px;border-radius:50%}
 .message div strong{font-size: 0.75rem;color:#333;font-weight:bold}
+.message > div{width:100%;}
 .bubble{padding:0.6rem 1rem;border-radius:21.15px;max-width:70%;word-wrap:break-word;position:relative}
-.left .bubble{background:var(--left-bg);margin-right:auto}
+.left .bubble{background:var(--left-bg)}
 .left .bubble::after{content: "";position:absolute;width:1.3em;height:1.2em;border: 0 solid var(--left-bg);border-bottom-width:0.5em;border-radius:50%;left:-0.1em;top:-0.8em}
 .right{flex-direction:row-reverse}
-.right .bubble{background:var(--right-bg);margin-left:auto}
+.right .bubble{background:var(--right-bg)}
 .right .bubble::after {content:"";position:absolute;width:1.3em;height:1.2em;border:0 solid var(--right-bg);border-bottom-width:0.5em;border-radius:50%;right:-0.1em;top:-0.8em}
 .meta{font-size:0.75rem;color:#666;margin-top:auto}
 .inputbar{display:flex;gap:0.5rem;padding:0.75rem;border-top:1px solid #eee;align-items:center}
@@ -44,6 +45,7 @@ body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;jus
 .controls{display:flex;gap:0.5rem;align-items:center;margin-left:auto}
 .form-row{display:flex;gap:0.5rem;align-items:center}
 .msgcontent{display:flex}
+.right .msgcontent {flex-direction:row-reverse}
 </style>
 </head>
 <body>
