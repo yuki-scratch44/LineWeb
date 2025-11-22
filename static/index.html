@@ -297,7 +297,6 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
   const txt = document.createElement('div');
   txt.className = 'text';
   txt.textContent = text || '';
-  bubble.appendChild(who);
   bubble.appendChild(txt);
 
   if (image) {
@@ -324,6 +323,7 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
 
   row.appendChild(avatar);
   row.appendChild(bubble);
+  row.appendChild(who);
   row.appendChild(meta);
   main.appendChild(row);
   // scroll to bottom
