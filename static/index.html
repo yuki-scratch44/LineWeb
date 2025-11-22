@@ -19,11 +19,12 @@ body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;jus
 .main{flex:1;padding:1rem;overflow:auto;display:flex;flex-direction:column;gap:0.5rem;background:linear-gradient(180deg,#fafcff,#f5f7fb)}
 .message{display:flex;gap:0.5rem;align-items:flex-end}
 .message .avatar{width:36px;height:36px;border-radius:50%}
+.message div strong{font-size: 0.75rem};
 .bubble{padding:0.6rem 0.9rem;border-radius:12px;max-width:70%;word-wrap:break-word}
 .left .bubble{background:var(--left-bg);margin-right:auto}
 .right{flex-direction:row-reverse}
 .right .bubble{background:var(--right-bg);margin-left:auto}
-.meta{font-size:0.75rem;color:#666;margin-top:0.25rem}
+.meta{font-size:0.75rem;color:#666;margin-top:auto}
 .inputbar{display:flex;gap:0.5rem;padding:0.75rem;border-top:1px solid #eee;align-items:center}
 .inputbar input[type="text"]{flex:1;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid #ddd;font-size:1rem}
 .small{font-size:0.85rem;color:#666}
@@ -31,6 +32,7 @@ body{margin:0;padding:0;background:var(--bg);display:flex;align-items:center;jus
 .message img.imgmsg{max-width:200px;border-radius:8px;display:block;margin-top:6px}
 .controls{display:flex;gap:0.5rem;align-items:center;margin-left:auto}
 .form-row{display:flex;gap:0.5rem;align-items:center}
+.msgcontent{display:flex}
 </style>
 </head>
 <body>
@@ -296,12 +298,22 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
     row.appendChild(who);
   }
 
+  const msgcontent = document.createElement('div');
+  msgcontent.className = 'msgcontent';
+  
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
+  
   const txt = document.createElement('div');
   txt.className = 'text';
   txt.textContent = text || '';
+  
   bubble.appendChild(txt);
+  
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = time ? new Date(time).toLocaleTimeString() : '';
+  
 
   if (image) {
     const img = document.createElement('img');
@@ -309,10 +321,6 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
     img.src = image;
     bubble.appendChild(img);
   }
-
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  meta.textContent = time ? new Date(time).toLocaleTimeString() : '';
 
   const controls = document.createElement('div');
   controls.className = 'controls';
@@ -325,8 +333,10 @@ function addMessageEl({id, user_id, username, icon, text, image, time}, side) {
     bubble.appendChild(s);
   }
 
-  row.appendChild(bubble);
-  row.appendChild(meta);
+  msgcontent.appendChild(bubble);
+  msgcontent.appendChild(meta);
+  
+  who.appendChild(msgcontent);
   main.appendChild(row);
   // scroll to bottom
   main.scrollTop = main.scrollHeight;
